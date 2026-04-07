@@ -1,0 +1,25 @@
+# AEGIS: Command Center Git Exclusion
+# Infrastructure
+node_modules/
+backend/venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local Tactical Data (SENSITIVE)
+network_intel.db
+backend/network_intel.db
+backend/vault/
+vault/
+*.pcap
+*.hc22000
+
+# Environment & IDE
+.env
+.vscode/
+.idea/
+.DS_Store
+
+# Build Artifacts
+dist/
+build/
