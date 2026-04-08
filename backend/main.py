@@ -1,11 +1,12 @@
 from fastapi import FastAPI, Depends, WebSocket, BackgroundTasks, WebSocketDisconnect, Response, Request, Form
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import models, database
 from database import engine, get_db
 import asyncio
 import recon
+from recon import active_interrogation
 import traffic
 import threading
 import airmon_agent
@@ -24,6 +25,14 @@ import queue
 import subprocess
 from agent_brains import BrainRouter
 from agent_runtime import AgentRuntime
+import uvicorn
+from typing import List, Dict
+from dotenv import load_dotenv
+from crypto_utils import encrypt_data
+from accountability import log_action
+
+# Load environment variables from .env
+load_dotenv()
 
 # --- EMERGENCY EVENT BUS ---
 event_queue = queue.Queue()
@@ -59,7 +68,15 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Command Center API")
 
 # --- AGENT INTELLIGENCE CENTER ---
-agent_router = BrainRouter()
+gemini_key = os.getenv("GEMINI_API_KEY")
+if not gemini_key:
+    # Tactical warning for the logs
+    print("\n" + "!"*80)
+    print("! CRITICAL ALERT: GEMINI_API_KEY NOT FOUND IN ENVIRONMENT".center(80))
+    print("! AEGIS AGENT WILL BE INOPERATIONAL UNTIL KEY IS PROVIDED IN .env".center(80))
+    print("!"*80 + "\n")
+
+agent_router = BrainRouter(api_key=gemini_key)
 
 @app.websocket("/api/agent/stream")
 async def agent_stream(websocket: WebSocket):
@@ -140,20 +157,38 @@ def get_devices(db: Session = Depends(get_db)):
     return db.query(models.Device).all()
 
 @app.get("/api/alerts")
-def get_alerts(db: Session = Depends(get_db)):
-    return db.query(models.Alert).order_by(models.Alert.timestamp.desc()).limit(100).all()
+async def get_alerts(limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
+    return db.query(models.Alert).order_by(models.Alert.timestamp.desc()).offset(offset).limit(limit).all()
 
 @app.get("/api/traffic")
-def get_traffic(db: Session = Depends(get_db)):
-    return db.query(models.TrafficLog).order_by(models.TrafficLog.timestamp.desc()).limit(100).all()
+async def get_traffic(limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
+    return db.query(models.TrafficLog).order_by(models.TrafficLog.timestamp.desc()).offset(offset).limit(limit).all()
 
-@app.get("/api/wireless/ap")
-def get_access_points(db: Session = Depends(get_db)):
+@app.get("/api/wireless/aps")
+async def get_access_points(db: Session = Depends(get_db)):
     return db.query(models.AccessPoint).all()
 
 @app.get("/api/wireless/clients")
-def get_wireless_clients(db: Session = Depends(get_db)):
+async def get_wireless_clients(db: Session = Depends(get_db)):
     return db.query(models.WirelessClient).all()
+
+@app.post("/api/wireless/clear-pulse")
+def clear_pulse(db: Session = Depends(get_db)):
+    """
+    Tactical Pruning: 
+    Removes all APs and Clients from the database that do NOT have a friendly label assigned.
+    """
+    try:
+        # Delete un-labeled Access Points
+        ap_del = db.query(models.AccessPoint).filter(models.AccessPoint.primary_name == None).delete(synchronize_session=False)
+        # Delete un-labeled Clients
+        cl_del = db.query(models.WirelessClient).filter(models.WirelessClient.primary_name == None).delete(synchronize_session=False)
+        
+        db.commit()
+        return {"status": "success", "message": f"Pulse Purged: {ap_del} APs and {cl_del} Clients removed."}
+    except Exception as e:
+        db.rollback()
+        return {"status": "error", "message": str(e)}
 
 @app.get("/api/wireless/ap/{bssid}/clients")
 def get_ap_clients(bssid: str, db: Session = Depends(get_db)):
@@ -261,6 +296,21 @@ async def stop_attack(req: dict):
     await broadcast_alert({"type": "ATTACK_UPDATE"})
     return result
 
+@app.post("/api/attack/disengage")
+async def global_disengage():
+    """Immediately stops all active offensive engagements."""
+    result = offensive_agent.stop_all_offensive_operations()
+    await broadcast_alert({"type": "ATTACK_UPDATE"})
+    return result
+
+@app.post("/api/dominance/hijack/direct")
+async def direct_hijack(target_ip: str, interface: str = "eth0"):
+    """Auto-resolves gateway and initiates ARP interception against a single target."""
+    gateway = offensive_agent.get_gateway_ip()
+    result = offensive_agent.trigger_arp_spoof(interface, target_ip, gateway)
+    await broadcast_alert({"type": "ATTACK_UPDATE"})
+    return result
+
 @app.post("/api/external/scan")
 def legacy_silence_scan():
     """Silence handoff for decommissioned ESP8266 nodes. Avoids log clutter."""
@@ -320,6 +370,28 @@ async def stop_beacon_flood():
     result = offensive_agent.stop_beacon_flood()
     await broadcast_alert({"type": "ATTACK_UPDATE"})
     return result
+
+# ─── DNS Spoofing & SSL Bypass Endpoints (Phase 4) ───────────────────────────
+
+class DNSSpoofRequest(BaseModel):
+    interface: str = "at0"
+    domains: List[Dict[str, str]]
+
+@app.post("/api/dns-spoofing/start")
+async def start_dns_spoofing(req: DNSSpoofRequest):
+    result = offensive_agent.trigger_dns_spoof(req.interface, req.domains)
+    await broadcast_alert({"type": "ATTACK_UPDATE"})
+    return result
+
+@app.post("/api/dns-spoofing/stop")
+async def stop_dns_spoofing():
+    result = offensive_agent.stop_dns_spoof()
+    await broadcast_alert({"type": "ATTACK_UPDATE"})
+    return result
+
+@app.get("/api/attack/ssl-bypass")
+async def get_ssl_bypass_script():
+    return offensive_agent.setup_ssl_bypass()
 
 # ─── Whitelist / Trusted Roster Endpoints ────────────────────────────────────
 
@@ -531,6 +603,77 @@ async def get_forensic_incidents(db: Session = Depends(get_db)):
     """Retrieves all analyzed forensic incidents."""
     return db.query(models.ForensicIncident).all()
 
+@app.get("/api/strategic/audit")
+async def get_strategic_audit(limit: int = 50, offset: int = 0, db: Session = Depends(get_db)):
+    """Retrieves the tactical operator audit trail."""
+    return db.query(models.AuditLog).order_by(models.AuditLog.timestamp.desc()).offset(offset).limit(limit).all()
+
+@app.get("/api/strategic/mission_logs")
+async def get_mission_logs(limit: int = 100, db: Session = Depends(get_db)):
+    """Retrieves real-time intelligence telemetry."""
+    return db.query(models.MissionLog).order_by(models.MissionLog.timestamp.desc()).limit(limit).all()
+
+@app.get("/api/strategic/report")
+async def generate_mission_report(db: Session = Depends(get_db)):
+    """Generates a tactical Markdown summary of the current mission state."""
+    creds = db.query(models.Evidence).filter(models.Evidence.data_type == "Credential").count()
+    campaigns = db.query(models.Campaign).count()
+    incidents = db.query(models.ForensicIncident).count()
+    logs = db.query(models.AuditLog).count()
+    
+    report = f"""# AEGIS COMMAND CENTER // MISSION_AFTER_ACTION_REPORT
+Generated: {datetime.datetime.now().isoformat()}
+
+## 📊 EXECUTIVE_SUMMARY
+- **Total Campaigns Initiated**: {campaigns}
+- **Strategic Assets Captured**: {creds}
+- **Forensic Incidents Correlated**: {incidents}
+- **Operator Audit Events**: {logs}
+
+## 🏁 CAMPAIGN_HISTORY
+"""
+    for c in db.query(models.Campaign).all():
+        report += f"- **{c.name}**: {c.status} (Target: {c.target_bssid})\n"
+        
+    report += "\n## 🔐 INTELLIGENCE_GATHERED\n"
+    for e in db.query(models.Evidence).filter(models.Evidence.data_type == "Credential").all():
+        data = json.loads(e.content)
+        report += f"- **{data['host']}**: Captured {list(data['captured'].keys())} from {e.target_ip}\n"
+        
+    report += "\n## 🛡️ AUDIT_TRAIL_SNIPPET (Last 10)\n"
+    for l in db.query(models.AuditLog).order_by(models.AuditLog.timestamp.desc()).limit(10).all():
+        report += f"[{l.timestamp}] {l.action} | Target: {l.target} | Result: {l.outcome}\n"
+        
+    return {"status": "success", "report": report}
+
+@app.get("/api/strategic/vault")
+async def get_strategic_vault(db: Session = Depends(get_db)):
+    """Retrieves all captured credentials and tactical intelligence."""
+    return db.query(models.Evidence).all()
+
+@app.post("/api/strategic/vault/export/encrypted")
+async def export_encrypted_vault(passphrase: str, db: Session = Depends(get_db)):
+    """Generates an AES-256 encrypted archive of the Strategic Vault."""
+    try:
+        vault_data = db.query(models.Evidence).all()
+        # Serialize to JSON string
+        raw_data = json.dumps([{"id": e.id, "type": e.data_type, "content": e.content, "timestamp": e.timestamp.isoformat()} for e in vault_data])
+        
+        # Encrypt
+        encrypted_blob = encrypt_data(raw_data, passphrase)
+        
+        # Log the exfiltration
+        log_action("TACTICAL_VAULT_EXFILTRATION", outcome="Encrypted Export Successful")
+        
+        return Response(
+            content=encrypted_blob,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f"attachment; filename=aegis_secure_vault_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.bin"}
+        )
+    except Exception as e:
+        log_action("TACTICAL_VAULT_EXFILTRATION", outcome=f"Failed: {str(e)}")
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/strategic/compliance")
 async def generate_compliance_audit(db: Session = Depends(get_db)):
     """
@@ -613,6 +756,24 @@ async def startup_event():
             "ALTER TABLE devices ADD COLUMN primary_name VARCHAR;",
             "ALTER TABLE access_points ADD COLUMN primary_name VARCHAR;",
             "ALTER TABLE wireless_clients ADD COLUMN primary_name VARCHAR;",
+            "ALTER TABLE wireless_clients ADD COLUMN ip_address VARCHAR;",
+            "ALTER TABLE devices ADD COLUMN hostname VARCHAR;",
+            "ALTER TABLE devices ADD COLUMN service_data VARCHAR;",
+            "ALTER TABLE devices ADD COLUMN is_interrogated BOOLEAN;",
+            "ALTER TABLE devices ADD COLUMN last_scan_type VARCHAR;",
+            "CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY, timestamp DATETIME, action VARCHAR, target VARCHAR, outcome VARCHAR, operator VARCHAR);",
+            # Index Migrations
+            "CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts (timestamp);",
+            "CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts (severity);",
+            "CREATE INDEX IF NOT EXISTS idx_traffic_timestamp ON traffic_logs (timestamp);",
+            "CREATE INDEX IF NOT EXISTS idx_evidence_timestamp ON evidence (timestamp);",
+            "CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns (status);",
+            "CREATE INDEX IF NOT EXISTS idx_campaigns_start ON campaigns (start_time);",
+            "CREATE INDEX IF NOT EXISTS idx_forensics_timestamp ON forensic_incidents (timestamp);",
+            "CREATE INDEX IF NOT EXISTS idx_intercepted_timestamp ON intercepted_traffic (timestamp);",
+            "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs (timestamp);",
+            "CREATE TABLE IF NOT EXISTS mission_logs (id INTEGER PRIMARY KEY, timestamp DATETIME, severity VARCHAR, category VARCHAR, message VARCHAR, target_mac VARCHAR);",
+            "CREATE INDEX IF NOT EXISTS idx_mission_logs_timestamp ON mission_logs (timestamp);",
         ]
         for migration in migrations:
             try:
@@ -620,7 +781,7 @@ async def startup_event():
                 conn.commit()
                 print(f"[+] Migration applied: {migration[:60]}...")
             except sqlite3.OperationalError:
-                pass  # Column already exists
+                pass  # Duplicate column or index already exists
         conn.close()
         print("[+] Database schema fully synchronized.")
     except Exception as e:
@@ -664,3 +825,25 @@ async def startup_event():
             
     t = threading.Thread(target=recon_loop, daemon=True)
     t.start()
+
+@app.post("/api/strategic/forensics/deep-dive/{incident_id}")
+async def trigger_forensics_deep_dive(incident_id: int, db: Session = Depends(get_db)):
+    incident = db.query(models.ForensicIncident).filter(models.ForensicIncident.id == incident_id).first()
+    if not incident:
+        return {"error": "Incident not found"}
+    # Correlate or Analyze PCAP
+    analysis = json.loads(incident.evidence_json)
+    return {"status": "success", "analysis": analysis}
+
+@app.post("/api/recon/interrogate/{mac}")
+async def interrogate_mac(mac: str, background_tasks: BackgroundTasks):
+    """Initiates a high-fidelity deep scan on a target MAC."""
+    # We run this as a background task because Nmap -sV -O can take 30s+
+    log_action("TACTICAL_INTERROGATION", target=mac, outcome="Initiated")
+    background_tasks.add_task(active_interrogation, mac)
+    return {"status": "success", "message": f"Interrogation of {mac} initiated in background."}
+
+# --- SERVER ENTRY POINT ---
+if __name__ == "__main__":
+    print("[*] AEGIS COMMAND CENTER: Launching Tactical API on port 8000")
+    uvicorn.run(app, host="0.0.0.0", port=8000)

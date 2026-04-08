@@ -1,68 +1,65 @@
-# AEGIS Tactical Guides
+# AEGIS // TACTICAL VANGUARD GUIDES [v1.5]
 
-This document provides detailed usage instructions for the core components of the AEGIS Command Center.
-
----
-
-## 📡 1. Radar (Airspace Intelligence)
-The Radar module provides passive reconnaissance and IDS capabilities.
-
-### How to Use:
-1.  Navigate to the **Radar** tab on the dashboard.
-2.  The system will automatically identify your monitor-mode interface (e.g., `wlan0mon`).
-3.  **Live Mapping**: The force-directed graph shows active Access Points and their associated clients.
-4.  **Signal Tracking**: Click on any BSSID to view its real-time Signal-to-Noise history.
-5.  **IDS Discovery**: New or unauthorized MAC addresses appearing in the airspace will trigger a "Critical Alert" in the top-right notification center.
+This document provides definitive strategic instructions for the **Vanguard-class** AEGIS Command Center.
 
 ---
 
-## ⚔️ 2. Strike Group (Offensive Maneuvers)
-Offensive tools are found in the **Strike Group** menu.
+## 📡 1. TACTICAL RADAR (AIRSPACE_INTELLIGENCE)
+High-fidelity passive reconnaissance and real-time IDS.
 
-### Tactical Deauth
-- **Purpose**: Temporarily disconnects a client or an entire AP.
-- **Workflow**: Select a target from the AP list -> Click **Engage** -> Select **Tactical Deauth**.
-- **Requirement**: The "Strike" interface must be on the same channel as the target AP.
-
-### Beacon Flood
-- **Purpose**: Creates hundreds of "Fake" APs to mask your presence or disrupt scanning.
-- **Workflow**: Click **Global Strike** -> **Beacon Flood**.
-- **Effect**: Local devices will see a cluttered Wi-Fi list with hundreds of random SSIDs.
-
-### Evil Twin (Access Point Cloning)
-- **Purpose**: Creates an identical copy of an AP to capture credentials or intercept traffic.
-- **Workflow**: Select a target AP -> Click **Deploy Evil Twin**.
-- **Configuration**:
-    - **Karma Mode**: Responds to all probe requests from nearby devices.
-    - **Captive Portal**: Redirects all HTTP traffic to a login page for "Identity Verification".
+### Operational Workflow:
+1.  **Live Mapping**: The 3D/2D Signal Space visualizes Access Points and associated clients.
+2.  **Signal Tracking**: Monitor real-time Signal-to-Noise (SNR) history for target triangulation.
+3.  **IDS Discovery**: Unauthorized or rogue MAC addresses trigger **Critical Alerts** in the Vanguard Notification Center.
 
 ---
 
-## 🌐 3. Dominance (Traffic Interception)
-The Dominance tab is used for Post-Association attacks (ARP/DNS Hijacking).
+## ⚔️ 2. OFFENSIVE OPS (STRIKE_MATRIX)
+Engaging hostile or target networks via the **Target Vector Matrix**.
 
-### ARP Spoofing
-1.  Ensure the target device is connected to the AEGIS "Evil Twin" or you are on the same local network.
-2.  Select the **Active Interception** sub-menu.
-3.  Target the gateway and the victim IP.
-4.  Intercepted traffic will stream in real-time to the **Telemetry Terminal**.
+### Tactical Deauth (Kinetic Strike)
+- **TARGET MATRIX**: Select any BSSID in the grid.
+- **ENGAGEMENT**: Click a card to toggle high-frequency deauthentication.
+- **FEEDBACK**: Active strikes are indicated by the `STATUS: ENGAGED` pulse.
 
-### DNS Hijacking
-- **Workflow**: Define a target domain (e.g., `google.com`) and a redirect IP (usually AEGIS local IP `10.0.0.1`).
-- **Effect**: Any user on the rogue network attempting to visit the target domain will be redirected to your local dashboard or portal.
+### Adverse Engagements
+- **BEACON_FLOOD**: Saturates the 2.4/5GHz spectrum with deceptive SSID vectors.
+- **EVIL_TWIN**: Clones a target AP with advanced **Karma** responses and **Captive Portal** interception.
+- **RECON_TARGET**: Identifies specific clients for selective engagement.
+
+---
+
+## 🏛️ 3. AUTHORIZED ROSTER (IDENTITY_GRID)
+Managing the "Trusted Node" whitelist with a high-fidelity authorized roster.
+
+- **IDENTITY_AUTHORIZATION**: Use the "Authorize Node" terminal to whitelist friendly MAC addresses.
+- **ALIASING**: Assign **Operator Aliases** to devices for easier tracking in the radar and logs.
 
 ---
 
-## 🤖 4. Aegis Intelligence (Agent)
-The Agent is your autonomous co-pilot for tactical modifications.
+## 🌐 4. AIRSPACE DOMINANCE (C2_INTERCEPTION)
+Post-association interception suite (ARP/DNS Hijacking).
 
-### Capabilities:
-- **Code Modification**: "Change the dashboard theme to toxic green."
-- **Data Analysis**: "Analyze the last 5 handshakes and tell me which ones are from TP-Link devices."
-- **Network Automation**: "Write a script to deauth every client that probes for 'Hidden_Net'."
+### Interception Protocol:
+- **ARP REDIRECTION**: Hijack traffic between a client and the gateway (MITM).
+- **DNS HIJACKING**: Strategic domain redirection to the **Captive Portal**.
+- **TELEMETRY_FEED**: Monitor clear-text HTTP/DNS traffic in real-time.
 
-### How to Interact:
-Open the **Aegis Agent** chat in the sidebar and issue natural language commands. The agent has direct access to the backend filesystem and terminal.
+> [!TIP]
+> Refer to the [C2_OPERATIONS_GUIDE.md](file:///home/flash/Documents/Military-grade%20Network%20Monitoring%20Dashboard/C2_OPERATIONS_GUIDE.md) for detailed "Full Credential Capture" mission scenarios.
 
 ---
-**WARNING**: These tools are for professional research. Misuse in unauthorized environments is strictly prohibited.
+
+## 🧪 5. FORENSICS LAB (INCIDENT_DEEP_DIVE)
+Post-incident analysis and deep-packet inspection.
+
+- **INCIDENT_ANALYSIS**: Spawns a terminal-style browser for forensic breakdown of captured network artifacts.
+- **EVIDENCE_VAULT**: Stores captured handshakes and exfiltrated credentials.
+
+---
+
+## 🤖 6. AEGIS INTELLIGENCE (AGENT)
+Your autonomous tactical co-pilot. Open the **Aegis Intelligence** tab to issue natural language commands for code modifications, deep data analysis, or automated mission scripting.
+
+---
+**AEGIS // Deployment: OPTIMAL. Airspace: GATED. Operator: ROOT.**

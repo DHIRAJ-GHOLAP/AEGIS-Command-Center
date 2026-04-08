@@ -17,13 +17,17 @@ class Device(Base):
     is_active = Column(Boolean, default=True)
     is_known = Column(Boolean, default=False)
     primary_name = Column(String, nullable=True)
+    hostname = Column(String, nullable=True, index=True)
+    service_data = Column(String, default="{}") # JSON blob of port/version info
+    is_interrogated = Column(Boolean, default=False, index=True)
+    last_scan_type = Column(String, default="Discovery") # Discovery, Interrogation
 
 class Alert(Base):
     __tablename__ = "alerts"
 
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-    severity = Column(String, default="Low") # Low, Medium, High, Critical
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    severity = Column(String, default="Low", index=True) # Low, Medium, High, Critical
     message = Column(String)
     device_mac = Column(String, nullable=True)
 
@@ -31,7 +35,7 @@ class TrafficLog(Base):
     __tablename__ = "traffic_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
     device_mac = Column(String, index=True)
     protocol = Column(String)
     packet_count = Column(Integer, default=0)
@@ -55,6 +59,7 @@ class WirelessClient(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     mac_address = Column(String, unique=True, index=True)
+    ip_address = Column(String, index=True, nullable=True)
     vendor = Column(String, default="Unknown")
     associated_bssid = Column(String, index=True, nullable=True) # Null if probing
     probed_ssids = Column(String, default="") # Comma separated
@@ -108,7 +113,7 @@ class Evidence(Base):
     __tablename__ = "evidence"
 
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
     target_ip = Column(String)
     data_type = Column(String) # Credentials, Cookies, Fingerprint
     content = Column(String) # JSON or plain text
@@ -119,9 +124,9 @@ class Campaign(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
-    status = Column(String, default="Idle") # Running, Completed, Failed
-    target_bssid = Column(String, nullable=True)
-    start_time = Column(DateTime, default=datetime.datetime.utcnow)
+    status = Column(String, default="Idle", index=True) # Running, Completed, Failed
+    target_bssid = Column(String, nullable=True, index=True)
+    start_time = Column(DateTime, default=datetime.datetime.utcnow, index=True)
     end_time = Column(DateTime, nullable=True)
 
 class CampaignStep(Base):
@@ -141,9 +146,9 @@ class ForensicIncident(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String)
-    incident_type = Column(String) # Unauthorized Access, Jamming, Rogue AP
-    severity = Column(String, default="Medium")
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    incident_type = Column(String, index=True) # Unauthorized Access, Jamming, Rogue AP
+    severity = Column(String, default="Medium", index=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
     summary = Column(String) # Automated narrative summary
     pcap_path = Column(String, nullable=True)
     evidence_json = Column(String, default="[]") # List of evidence IDs
@@ -163,7 +168,7 @@ class InterceptedTraffic(Base):
     __tablename__ = "intercepted_traffic"
 
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
     client_mac = Column(String, index=True)
     client_ip = Column(String, nullable=True)
     traffic_type = Column(String) # HTTP, DNS
@@ -181,3 +186,25 @@ class DeviceFingerprint(Base):
     user_agent = Column(String, default="Unknown")
     last_seen = Column(DateTime, default=datetime.datetime.utcnow)
     behavior_score = Column(Integer, default=0) # Anomaly score
+
+class AuditLog(Base):
+    """Permanent record of operator actions and tactical maneuvers."""
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    action = Column(String) # Jam Radar, Hijack DNS, etc.
+    target = Column(String, nullable=True) # IP or BSSID
+    outcome = Column(String, default="Success")
+    operator = Column(String, default="Admin")
+
+class MissionLog(Base):
+    """Real-time intelligence stream for active reconnaissance and tactical ops."""
+    __tablename__ = "mission_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    severity = Column(String, default="Info") # Info, Warning, Alert, Success
+    category = Column(String, default="RECON") # RECON, STRIKE, DEFENSE
+    message = Column(String)
+    target_mac = Column(String, nullable=True)

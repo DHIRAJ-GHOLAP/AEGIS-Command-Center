@@ -23,3 +23,12 @@ vault/
 # Build Artifacts
 dist/
 build/
+backend.log
+frontend.log
+backend/backend.log
+__pycache__/
+*.pyc
+.aegis.pids
+backend/network_intel.db
+backend/vault/
+*.log

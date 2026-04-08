@@ -1,4 +1,4 @@
-from scapy.all import sniff, Dot11, Dot11Beacon, Dot11Elt, Dot11ProbeReq, Dot11Deauth, EAPOL, RadioTap, wrpcap
+from scapy.all import sniff, Dot11, Dot11Beacon, Dot11Elt, Dot11ProbeReq, Dot11Deauth, EAPOL, RadioTap, wrpcap, ARP, IP, UDP, DHCP
 import string
 from database import SessionLocal
 from models import AccessPoint, WirelessClient, HandshakeVault, Alert, SignalHistory, ProbeHistory, TrustedDevice
@@ -270,6 +270,24 @@ def handle_packet(packet):
                             client.signal_strength = signal_dbm
                         if changed and SIGNAL_QUEUE:
                             SIGNAL_QUEUE.put({"type": "CLIENT_ASSOCIATION", "data": {"mac": client_mac, "bssid": bssid}})
+                    
+                    # --- [STRATEGIC_IP_CORRELATION] ---
+                    # Check for cleartext Layer 3 artifacts (ARP/IP/DHCP)
+                    new_ip = None
+                    if packet.haslayer(ARP):
+                        new_ip = packet[ARP].psrc
+                    elif packet.haslayer(IP):
+                        new_ip = packet[IP].src
+                    elif packet.haslayer(UDP) and (packet[UDP].sport == 68 or packet[UDP].dport == 67):
+                        if packet.haslayer(DHCP):
+                            # Simplistic DHCP ACK/Offer check
+                            new_ip = packet[IP].dst if packet[IP].dst != "255.255.255.255" else "Unknown"
+
+                    if new_ip and new_ip != "0.0.0.0" and new_ip != "Unknown":
+                        if client.ip_address != new_ip:
+                            client.ip_address = new_ip
+                            print(f"[+] AIRSPACE_DOMINANCE: Identified IP {new_ip} for MAC {client_mac}")
+
                     db.commit()
 
             # ── EAPOL Handshake Tracking ──────────────────────────────────────

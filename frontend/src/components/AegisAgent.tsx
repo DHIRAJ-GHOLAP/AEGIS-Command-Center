@@ -73,14 +73,14 @@ export function AegisAgent() {
   return (
     <div style={{ display: 'flex', gap: '1.5rem', height: '100%', minHeight: '600px' }}>
       {/* Main Chat Area */}
-      <div className="glass-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '1.5rem', background: 'rgba(0,0,0,0.4)', borderRadius: '12px' }}>
+      <div className="glass-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '1.5rem', background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <Cpu className="title-glow" size={24} />
             <div>
               <h3 style={{ fontSize: '1.1rem' }}>AEGIS INTELLIGENCE CENTER</h3>
               <div style={{ fontSize: '0.6rem', color: connectionStatus === 'CONNECTED' ? 'var(--accent-success)' : 'var(--accent-warn)', letterSpacing: '0.1em' }}>
-                STATUS // {connectionStatus} // BRAIN: LOCAL_LM_STUDIO
+                STATUS // {connectionStatus} // BRAIN: GEMINI_CLOUD_PRO
               </div>
             </div>
           </div>
@@ -99,17 +99,18 @@ export function AegisAgent() {
             <div key={i} style={{ 
               alignSelf: m.type === 'user' ? 'flex-end' : 'flex-start',
               maxWidth: '85%',
-              padding: '1rem',
-              borderRadius: '8px',
-              background: m.type === 'user' ? 'rgba(0,242,254,0.1)' : 'rgba(255,255,255,0.03)',
-              border: m.type === 'user' ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.05)',
-              borderLeft: m.type === 'thought' ? '3px solid var(--accent-secondary)' : undefined
+              padding: '1.25rem',
+              borderRadius: '12px',
+              background: m.type === 'user' ? 'hsla(183, 100%, 50%, 0.08)' : 'hsla(0, 0%, 100%, 0.03)',
+              border: m.type === 'user' ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
+              borderLeft: m.type === 'thought' ? '4px solid var(--accent-secondary)' : undefined,
+              boxShadow: m.type === 'user' ? '0 0 20px hsla(183, 100%, 50%, 0.05)' : 'none'
             }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
-                <span>{m.type.toUpperCase()} // AEGIS_INTEL</span>
-                <span>{m.timestamp}</span>
+              <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', opacity: 0.8, letterSpacing: '0.05em' }}>
+                <span className="tactical-font">{m.type.toUpperCase()} // AEGIS_INTEL</span>
+                <span className="mono">{m.timestamp}</span>
               </div>
-              <div style={{ fontSize: '0.95rem', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{m.message}</div>
+              <div style={{ fontSize: '0.95rem', lineHeight: '1.6', whiteSpace: 'pre-wrap', color: m.type === 'user' ? '#fff' : 'var(--text-main)' }}>{m.message}</div>
             </div>
           ))}
           {isThinking && (
@@ -124,30 +125,33 @@ export function AegisAgent() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder="Identify tactical objective..."
+            placeholder="IDENTIFY TACTICAL OBJECTIVE..."
+            className="tactical-font"
             style={{
               width: '100%',
-              background: 'rgba(0,0,0,0.5)',
-              border: '1px solid var(--accent-primary)',
+              background: 'hsla(0, 0%, 0%, 0.4)',
+              border: '1px solid var(--border-subtle)',
               borderRadius: '8px',
-              padding: '1rem',
-              paddingRight: '3rem',
+              padding: '1.2rem',
+              paddingRight: '3.5rem',
               color: '#fff',
               outline: 'none',
-              fontFamily: 'inherit'
+              transition: 'border-color 0.3s ease',
+              fontSize: '0.8rem'
             }}
           />
           <button 
             onClick={sendMessage}
-            style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer' }}>
-            <Send size={20} />
+            className="tactical-btn"
+            style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none' }}>
+            <Send size={18} color="var(--accent-primary)" />
           </button>
         </div>
       </div>
 
       {/* Tactical Execution side-panel */}
       <div className="glass-panel" style={{ width: '350px', display: 'flex', flexDirection: 'column', padding: '1.25rem', background: 'rgba(0,0,0,0.6)', borderLeft: '2px solid var(--accent-primary)' }}>
-        <h4 style={{ fontSize: '0.8rem', letterSpacing: '0.15em', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', color: 'var(--accent-secondary)' }}>
+        <h4 className="tactical-font" style={{ fontSize: '0.75rem', letterSpacing: '0.2em', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', color: 'var(--accent-secondary)', opacity: 0.8 }}>
           <Terminal size={16} /> EXECUTION // TRACE_LOG
         </h4>
         
